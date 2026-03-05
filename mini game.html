@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 禁止用户缩放，适配移动端视口 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>末日水世界：深海大收割</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background: #050b14; 
+            font-family: 'Arial Black', sans-serif; 
+            user-select: none; 
+            touch-action: none; 
+            color: white;
+            /* 禁用 iOS 长按菜单 */
+            -webkit-touch-callout: none;
+        }
+        canvas { display: block; }
+        
+        /* 界面通用样式 - 增加安全区 Padding */
+        .overlay { 
+            position: absolute; 
+            inset: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 200; 
+            background: rgba(5, 11, 20, 0.95); 
+            backdrop-filter: blur(15px); 
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .hidden { display: none !important; }
+        .glass-panel { 
+            background: rgba(255, 255, 255, 0.05); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            border-radius: 32px; 
+            padding: 30px; 
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5); 
+            text-align: center; 
+            width: 90%; 
+            max-width: 380px; 
+        }
+        
+        .btn-main { 
+            background: linear-gradient(135deg, #f6e05e, #ed8936); 
+            color: #1a202c; 
+            padding: 16px 0; 
+            width: 100%; 
+            border-radius: 16px; 
+            font-weight: 900; 
+            font-size: 20px; 
+            text-transform: uppercase; 
+            cursor: pointer; 
+            box-shadow: 0 6px 0 #9c4221; 
+            transition: all 0.1s; 
+            margin-bottom: 15px; 
+        }
+        .btn-main:active { transform: translateY(3px); box-shadow: 0 3px 0 #9c4221; }
+        
+        /* 经验条 - 适配刘海屏 */
+        .bar-container { 
+            width: 85%; 
+            height: 8px; 
+            background: rgba(0,0,0,0.5); 
+            border-radius: 4px; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            overflow: hidden; 
+            position: absolute; 
+            left: 50%; 
+            transform: translateX(-50%); 
+        }
+        .xp-bar { top: calc(10px + env(safe-area-inset-top)); }
+        .xp-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #4fd1c5, #63b3ed); transition: width 0.3s; }
+        
+        .goal-bar { height: 10px; width: 100%; max-width: 200px; margin: 5px auto 0; }
+        .goal-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #f6e05e, #fbd38d); transition: width 0.3s; }
+
+        /* --- 响应式卡牌系统 --- */
+        .card-slot { 
+            display: flex; 
+            flex-direction: row; 
+            gap: 8px; 
+            width: 100%; 
+            padding: 0 10px;
+            justify-content: center;
+            margin-top: 20px; 
+            perspective: 800px;
+        }
+        .upgrade-card { 
+            background: linear-gradient(145deg, rgba(45, 55, 72, 0.9), rgba(20, 26, 35, 0.95)); 
+            border: 2px solid #4fd1c5; 
+            border-radius: 12px; 
+            flex: 1;
+            max-width: 105px;
+            height: 160px;
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: space-between;
+            padding: 12px 5px;
+            text-align: center; 
+            cursor: pointer; 
+            box-shadow: 0 8px 15px rgba(0,0,0,0.4);
+            animation: cardAppear 0.4s ease-out both;
+        }
+        @keyframes cardAppear {
+            from { opacity: 0; transform: translateY(30px) rotateY(15deg); }
+            to { opacity: 1; transform: translateY(0) rotateY(0); }
+        }
+        .card-icon-container {
+            width: 40px;
+            height: 40px;
+            background: rgba(79, 209, 197, 0.15);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-icon { font-size: 24px; }
+        .card-name { font-size: 11px; font-weight: 900; color: #fff; line-height: 1.1; }
+        .card-desc { font-size: 8px; color: #a0aec0; line-height: 1.2; }
+
+        /* HUD 适配 */
+        .hud { 
+            position: absolute; 
+            top: calc(35px + env(safe-area-inset-top)); 
+            width: 100%; 
+            padding: 0 15px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            pointer-events: none; 
+            z-index: 100; 
+        }
+        .timer { font-size: 24px; color: #f56565; background: rgba(0,0,0,0.5); padding: 4px 12px; border-radius: 10px; border: 2px solid #f56565; }
+        .frenzy-container { position: absolute; bottom: calc(20px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: 180px; height: 6px; background: rgba(0,0,0,0.5); border-radius: 3px; overflow: hidden; }
+        .frenzy-fill { width: 0%; height: 100%; background: #f56565; transition: width 0.1s; }
+
+        #jackpot-title { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); font-size: 60px; color: #ffd700; font-style: italic; opacity: 0; pointer-events: none; text-shadow: 0 0 20px #ffd700; z-index: 150; }
+        .jackpot-active #jackpot-title { animation: jackpot-text 0.5s infinite; opacity: 1; }
+        @keyframes jackpot-text { 0% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.1); } 100% { transform: translate(-50%, -50%) scale(1); } }
+    </style>
+</head>
+<body id="body">
+
+    <!-- 顶部经验条 -->
+    <div class="bar-container xp-bar"><div id="xp-fill" class="xp-fill"></div></div>
+    <div id="player-lv" class="absolute top-[calc(22px+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 text-[9px] text-cyan-400 font-bold uppercase tracking-widest">LV.1</div>
+
+    <!-- 关卡进度 -->
+    <div id="goal-hud" class="absolute top-[calc(70px+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 text-center hidden w-full">
+        <div class="text-[9px] text-yellow-500 font-bold uppercase">搜集进度</div>
+        <div id="goal-text" class="text-xs font-bold">0 / 30</div>
+        <div class="bar-container goal-bar" style="position:relative; transform:none; left:0;"><div id="goal-fill" class="goal-fill"></div></div>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="screen-home" class="overlay">
+        <div class="glass-panel">
+            <h1 class="text-4xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-orange-500 italic uppercase">末日收割</h1>
+            <p class="text-blue-300 text-[9px] tracking-[0.3em] mb-8 uppercase">Deep Sea Harvester</p>
+            <button id="btn-start" class="btn-main">开始收割</button>
+            <div class="text-left w-full border-t border-white/10 pt-4">
+                <h3 class="text-gray-400 text-[9px] uppercase mb-2">最高分排行 (近10局)</h3>
+                <div id="rank-list" class="text-xs space-y-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 升级界面 -->
+    <div id="screen-upgrade" class="overlay hidden">
+        <h2 class="text-3xl font-black italic mb-1 uppercase tracking-wider">能力进化</h2>
+        <p class="text-cyan-400 text-[10px] mb-6 uppercase tracking-[0.2em]">Select Your Technology</p>
+        <div id="upgrade-cards" class="card-slot"></div>
+    </div>
+
+    <!-- 关卡成功界面 -->
+    <div id="screen-levelclear" class="overlay hidden">
+        <div class="glass-panel">
+            <h2 class="text-4xl font-black mb-2 text-yellow-400 italic">区域达成!</h2>
+            <p class="text-blue-300 text-xs mb-8 uppercase tracking-widest">Zone Cleared</p>
+            <button id="btn-next-level" class="btn-main">继续前进</button>
+        </div>
+    </div>
+
+    <!-- 结算界面 -->
+    <div id="screen-gameover" class="overlay hidden">
+        <div class="glass-panel">
+            <h2 class="text-4xl font-black text-red-500 mb-2">时间到!</h2>
+            <div id="final-score" class="text-5xl font-black mb-2">0</div>
+            <div id="high-score-tag" class="text-yellow-400 text-[10px] mb-6">新纪录!</div>
+            <button id="btn-restart" class="btn-main">确认</button>
+        </div>
+    </div>
+
+    <!-- 战斗 HUD -->
+    <div id="hud" class="hud hidden">
+        <div class="bg-blue-900/40 border border-white/10 px-3 py-1 rounded-xl backdrop-blur-md">
+            <div class="text-[8px] opacity-50">SCORE</div>
+            <div id="score-text" class="text-lg font-bold">0</div>
+        </div>
+        <div id="timer-text" class="timer">60</div>
+    </div>
+
+    <div id="jackpot-title">JACKPOT!!</div>
+    <div class="frenzy-container"><div id="frenzy-fill" class="frenzy-fill"></div></div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // --- 核心数值配置 ---
+        const TYPES = {
+            SMALL: { size: 28, speed: 3.2, value: 20, hp: 15, xp: 20, weight: 1, icon: '🐟', color: '#63b3ed' },
+            MED:   { size: 50, speed: 1.8, value: 100, hp: 60, xp: 80, weight: 3, icon: '📦', color: '#fbd38d' },
+            LARGE: { size: 100, speed: 0.8, value: 500, hp: 180, xp: 250, weight: 10, icon: '🚢', color: '#fc8181' },
+            GOLD:  { size: 75, speed: 1.2, value: 2000, hp: 300, xp: 1200, weight: 20, icon: '💎', color: '#faf089', rare: true },
+            BOMB:  { size: 65, speed: 1.0, value: 0, hp: 1, xp: 0, weight: 2, icon: '🧨', color: '#f56565', isBomb: true },
+            BAG:   { size: 90, speed: 2.5, value: 5000, hp: 1, xp: 0, weight: 25, icon: '💰', color: '#ffd700', isJackpot: true }
+        };
+
+        const UPGRADES = [
+            { id: 'atk', name: '收割强度', desc: '鱼叉伤害+50%', icon: '⚔️', fn: () => { player.atk *= 1.5; } },
+            { id: 'fire', name: '极速连发', desc: '射速提升30%', icon: '⚡', fn: () => { player.fireRate *= 0.7; } },
+            { id: 'multi', name: '三叉戟', desc: '发射3枚鱼叉', icon: '🔱', fn: () => { player.multishot = 3; } },
+            { id: 'pierce', name: '强力穿透', desc: '击碎不消失', icon: '🏹', fn: () => { player.pierce = true; } },
+            { id: 'crit', name: '精准猎杀', desc: '暴击率+25%', icon: '🎯', fn: () => { player.crit += 0.25; } },
+            { id: 'xp', name: '智慧收割', desc: '经验获取+40%', icon: '🧠', fn: () => { player.xpMod *= 1.4; } }
+        ];
+
+        // --- 状态变量 ---
+        let width, height, dpr;
+        let gameState = 'HOME';
+        let score = 0, totalScore = 0, timeLeft = 60;
+        let level = 1, collected = 0, target = 30;
+        let moneyBagCooldown = 0, screenShake = 0, lastTime = 0;
+        let frenzyEnergy = 0, isFrenzy = false, frenzyTimer = 0, jackpotMode = 0;
+        let isPressing = false, pressX = 0, pressY = 0;
+
+        const player = {
+            lv: 1, xp: 0, nextXp: 500, atk: 45, fireRate: 300, 
+            multishot: 1, pierce: false, crit: 0.1, xpMod: 1, lastFire: 0
+        };
+
+        let debris = [], harpoons = [], particles = [], floatingTexts = [];
+        let scoreHistory = JSON.parse(localStorage.getItem('sea_scores') || '[]');
+
+        // --- 核心类 ---
+
+        class Harpoon {
+            constructor(x, y, tx, ty, angleOffset = 0) {
+                this.x = x; this.y = y;
+                const angle = Math.atan2(ty - y, tx - x) + angleOffset;
+                this.vx = Math.cos(angle) * 35;
+                this.vy = Math.sin(angle) * 35;
+                this.angle = angle;
+                this.active = true;
+                this.hits = new Set();
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                if (this.x < -50 || this.x > width + 50 || this.y > height + 50) this.active = false;
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y); ctx.rotate(this.angle);
+                ctx.shadowBlur = player.pierce ? 15 : 0; ctx.shadowColor = "#ed64a6";
+                ctx.fillStyle = "#fff";
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-25, -8); ctx.lineTo(-25, 8); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Item {
+            constructor(key) {
+                this.type = TYPES[key];
+                this.active = false;
+                this.init();
+            }
+            init() {
+                if (this.type.isJackpot && moneyBagCooldown > 0) { this.active = false; return; }
+                this.x = Math.random() * width;
+                this.y = height + 150;
+                this.speed = this.type.speed * (0.8 + Math.random() * 0.4);
+                this.phase = Math.random() * Math.PI * 2;
+                this.maxHp = this.type.hp * (1 + (level - 1) * 0.2);
+                this.hp = this.maxHp;
+                this.active = true;
+            }
+            update() {
+                if (!this.active) {
+                    if (this.type.isJackpot && moneyBagCooldown <= 0) this.init();
+                    return;
+                }
+                this.y -= this.speed;
+                this.x += Math.sin(this.y * 0.02 + this.phase) * 2;
+                if (this.y < -150) this.init();
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.save(); ctx.translate(this.x, this.y);
+                if (this.hp < this.maxHp || this.type.size > 40) {
+                    const w = this.type.size * 0.8;
+                    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(-w/2, -this.type.size/2 - 12, w, 5);
+                    ctx.fillStyle = this.hp/this.maxHp > 0.3 ? "#4fd1c5" : "#f56565";
+                    ctx.fillRect(-w/2, -this.type.size/2 - 12, w * (this.hp/this.maxHp), 5);
+                }
+                ctx.font = `${this.type.size}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                if (this.type.rare || this.type.isJackpot) { ctx.shadowBlur = 30; ctx.shadowColor = this.type.color; }
+                ctx.fillText(this.type.icon, 0, 0);
+                ctx.restore();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color, type = 'normal') {
+                this.x = x; this.y = y; this.color = color; this.type = type;
+                this.life = 1.0; this.size = Math.random() * 6 + 2;
+                if (type === 'jackpot') {
+                    const ang = Math.atan2(height/2-y, width/2-x) + (Math.random()-0.5);
+                    const spd = Math.random() * 20 + 10;
+                    this.vx = Math.cos(ang) * spd; this.vy = Math.sin(ang) * spd;
+                } else {
+                    const ang = Math.random() * Math.PI * 2;
+                    const spd = Math.random() * 10 + 2;
+                    this.vx = Math.cos(ang) * spd; this.vy = Math.sin(ang) * spd;
+                }
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy; this.vy += 0.4;
+                this.life -= (this.type === 'jackpot' ? 0.01 : 0.03);
+            }
+            draw() {
+                ctx.save(); ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill(); ctx.restore();
+            }
+        }
+
+        class FText {
+            constructor(x, y, text, color, size = 16) {
+                this.x = x; this.y = y; this.text = text; this.color = color;
+                this.size = size; this.life = 1.0;
+            }
+            update() { this.y -= 1.5; this.life -= 0.025; }
+            draw() {
+                ctx.save(); ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+                ctx.font = `bold ${this.size}px Arial`; ctx.textAlign = 'center';
+                ctx.fillText(this.text, this.x, this.y); ctx.restore();
+            }
+        }
+
+        // --- 逻辑函数 ---
+
+        function resize() {
+            dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            ctx.scale(dpr, dpr);
+        }
+
+        function initGame() {
+            score = 0; totalScore = 0; level = 1; collected = 0; target = 30; timeLeft = 60;
+            isFrenzy = false; frenzyEnergy = 0; jackpotMode = 0;
+            player.lv = 1; player.xp = 0; player.nextXp = 500;
+            player.atk = 45; player.fireRate = 300; player.multishot = 1; player.pierce = false; player.crit = 0.1; player.xpMod = 1;
+            harpoons = []; debris = []; particles = []; floatingTexts = [];
+            ['SMALL','SMALL','SMALL','SMALL','MED','MED','MED','LARGE','GOLD','BOMB','BAG'].forEach(k => debris.push(new Item(k)));
+            updateHUD();
+        }
+
+        function spawnHarpoons(tx, ty) {
+            const now = Date.now();
+            if (now - player.lastFire < player.fireRate && !isFrenzy) return;
+            player.lastFire = now;
+
+            const sx = width / 2, sy = 30; // 适配顶部船只位置
+            if (player.multishot === 1) {
+                harpoons.push(new Harpoon(sx, sy, tx, ty));
+            } else {
+                harpoons.push(new Harpoon(sx, sy, tx, ty, -0.15));
+                harpoons.push(new Harpoon(sx, sy, tx, ty, 0));
+                harpoons.push(new Harpoon(sx, sy, tx, ty, 0.15));
+            }
+        }
+
+        function handleHit(h, d) {
+            if (h.hits.has(d)) return;
+            h.hits.add(d);
+
+            let dmg = player.atk;
+            let crit = Math.random() < player.crit;
+            if (crit) dmg *= 2;
+            d.hp -= dmg;
+            screenShake = 4;
+            floatingTexts.push(new FText(d.x, d.y - 15, (crit?"暴! ":"") + `-${Math.round(dmg)}`, crit?"#f6e05e":"#fff", crit?20:14));
+
+            if (d.hp <= 0) {
+                d.active = false;
+                if (d.type.isBomb) triggerExplosion(d.x, d.y);
+                else if (d.type.isJackpot) triggerJackpot(d.x, d.y);
+                else processReward(d);
+                if (!d.type.isJackpot) setTimeout(() => d.init(), 800);
+                if (!player.pierce) h.active = false;
+            } else {
+                if (!player.pierce) h.active = false;
+                for(let i=0; i<3; i++) particles.push(new Particle(d.x, d.y, "#fff"));
+            }
+        }
+
+        function triggerExplosion(x, y) {
+            screenShake = 30;
+            debris.forEach(other => {
+                if (other.active && !other.type.isJackpot) {
+                    if (Math.hypot(x - other.x, y - other.y) < 250) {
+                        other.active = false; processReward(other);
+                        setTimeout(() => other.init(), 1200);
+                    }
+                }
+            });
+            for(let i=0; i<30; i++) particles.push(new Particle(x, y, "#f6e05e"));
+        }
+
+        function triggerJackpot(x, y) {
+            jackpotMode = 300; moneyBagCooldown = 30;
+            document.body.classList.add('jackpot-active');
+            score += 5000; totalScore += 5000; collected += 25;
+            frenzyEnergy = 100; startFrenzy();
+            for(let i=0; i<40; i++) particles.push(new Particle(x, y, "#ffd700"));
+            updateHUD(); checkLevel();
+        }
+
+        function processReward(d) {
+            score += d.type.value; totalScore += d.type.value; collected += d.type.weight;
+            if (d.type.xp > 0) {
+                player.xp += d.type.xp * player.xpMod;
+                if (player.xp >= player.nextXp) levelUp();
+            }
+            for(let i=0; i<15; i++) particles.push(new Particle(d.x, d.y, d.type.color));
+            if (!isFrenzy) { frenzyEnergy = Math.min(100, frenzyEnergy + d.type.value/15); if(frenzyEnergy >= 100) startFrenzy(); }
+            updateHUD(); checkLevel();
+        }
+
+        function levelUp() {
+            gameState = 'UPGRADING'; isPressing = false;
+            player.lv++; player.xp -= player.nextXp;
+            player.nextXp = Math.floor(player.nextXp * 1.5);
+            const pool = [...UPGRADES].sort(() => 0.5 - Math.random()).slice(0, 3);
+            const container = document.getElementById('upgrade-cards');
+            container.innerHTML = '';
+            
+            pool.forEach((upg, index) => {
+                const card = document.createElement('div');
+                card.className = 'upgrade-card';
+                card.style.animationDelay = `${index * 0.1}s`;
+                card.innerHTML = `
+                    <div class="card-icon-container"><span class="card-icon">${upg.icon}</span></div>
+                    <div class="card-name">${upg.name}</div>
+                    <div class="card-desc">${upg.desc}</div>
+                `;
+                card.onclick = (e) => { 
+                    e.stopPropagation(); upg.fn(); 
+                    gameState = 'PLAYING'; document.getElementById('screen-upgrade').classList.add('hidden'); updateHUD(); 
+                };
+                container.appendChild(card);
+            });
+            document.getElementById('screen-upgrade').classList.remove('hidden');
+        }
+
+        function checkLevel() {
+            if (collected >= target) {
+                gameState = 'LEVELCLEAR'; isPressing = false;
+                document.getElementById('screen-levelclear').classList.remove('hidden');
+                document.getElementById('hud').classList.add('hidden');
+                document.getElementById('goal-hud').classList.add('hidden');
+            }
+        }
+
+        function startFrenzy() { isFrenzy = true; frenzyTimer = 450; }
+
+        function updateHUD() {
+            document.getElementById('score-text').innerText = score.toLocaleString();
+            document.getElementById('timer-text').innerText = Math.max(0, Math.ceil(timeLeft));
+            document.getElementById('player-lv').innerText = `LV.${player.lv}`;
+            document.getElementById('xp-fill').style.width = `${(player.xp/player.nextXp)*100}%`;
+            document.getElementById('goal-text').innerText = `${collected} / ${target}`;
+            document.getElementById('goal-fill').style.width = `${Math.min(100, (collected/target)*100)}%`;
+        }
+
+        function updateRank() {
+            const best = scoreHistory.length ? Math.max(...scoreHistory) : 0;
+            const mock = [{n:'海洋霸主', s:250000}, {n:'我的最高', s:best, me:true}].sort((a,b)=>b.s-a.s).slice(0,5);
+            document.getElementById('rank-list').innerHTML = mock.map((r,i)=>`<div class="flex justify-between ${r.me?'text-yellow-400':''}"><span>${i+1}. ${r.n}</span><span>${r.s.toLocaleString()}</span></div>`).join('');
+        }
+
+        // --- 循环 ---
+
+        function update(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            if (isPressing && !isFrenzy) {
+                spawnHarpoons(pressX, pressY);
+            }
+
+            timeLeft -= dt / 1000;
+            if (timeLeft <= 0) {
+                gameState = 'GAMEOVER'; isPressing = false;
+                document.getElementById('screen-gameover').classList.remove('hidden');
+                document.getElementById('hud').classList.add('hidden');
+                document.getElementById('goal-hud').classList.add('hidden');
+                document.getElementById('final-score').innerText = totalScore.toLocaleString();
+                scoreHistory.unshift(totalScore);
+                if(scoreHistory.length > 10) scoreHistory.pop();
+                localStorage.setItem('sea_scores', JSON.stringify(scoreHistory));
+                document.getElementById('high-score-tag').style.opacity = totalScore >= Math.max(...scoreHistory) ? 1 : 0;
+                return;
+            }
+
+            if (jackpotMode > 0) {
+                jackpotMode--; screenShake = Math.max(screenShake, 8);
+                const corners = [{x:0,y:0}, {x:width,y:0}, {x:0,y:height}, {x:width,y:height}];
+                corners.forEach(c => { if(Math.random()>0.25) particles.push(new Particle(c.x, c.y, "#ffd700", 'jackpot')); });
+                if (jackpotMode === 0) document.body.classList.remove('jackpot-active');
+            }
+
+            if (isFrenzy) {
+                frenzyTimer--; frenzyEnergy = (frenzyTimer/450)*100;
+                if (frenzyTimer % 5 === 0) spawnHarpoons(Math.random()*width, height);
+                if (frenzyTimer <= 0) { isFrenzy = false; frenzyEnergy = 0; }
+            } else { if(frenzyEnergy > 0) frenzyEnergy -= 0.05; }
+            document.getElementById('frenzy-fill').style.width = `${frenzyEnergy}%`;
+            if (moneyBagCooldown > 0) moneyBagCooldown -= dt/1000;
+
+            harpoons.forEach(h => {
+                h.update();
+                debris.forEach(d => { if(d.active && Math.hypot(h.x-d.x, h.y-d.y) < d.type.size*0.6) handleHit(h, d); });
+            });
+            debris.forEach(d => d.update());
+            particles.forEach(p => p.update());
+            floatingTexts.forEach(t => t.update());
+            
+            harpoons = harpoons.filter(h => h.active);
+            particles = particles.filter(p => p.life > 0);
+            floatingTexts = floatingTexts.filter(t => t.life > 0);
+            if (screenShake > 0) screenShake *= 0.9;
+            updateHUD();
+        }
+
+        function draw() {
+            ctx.fillStyle = "#050b14"; ctx.fillRect(0, 0, width, height);
+            const rad = ctx.createRadialGradient(width/2, 0, 80, width/2, 0, height);
+            rad.addColorStop(0, jackpotMode > 0 ? "#1e3a8a" : "#0f172a"); rad.addColorStop(1, "#050b14");
+            ctx.fillStyle = rad; ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            if (screenShake > 1) ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
+            debris.forEach(d => d.draw());
+            harpoons.forEach(h => h.draw());
+            particles.forEach(p => p.draw());
+            floatingTexts.forEach(t => t.draw());
+            ctx.restore();
+
+            if (gameState === 'PLAYING') {
+                // 绘制顶部船只边缘
+                ctx.fillStyle = "#2d3748"; ctx.beginPath(); ctx.arc(width/2, -10, 60, 0, Math.PI); ctx.fill();
+            }
+        }
+
+        function loop(ts) {
+            const dt = ts - lastTime; lastTime = ts;
+            update(dt); draw();
+            requestAnimationFrame(loop);
+        }
+
+        // --- 事件绑定 ---
+        document.getElementById('btn-start').onclick = () => {
+            gameState = 'PLAYING';
+            document.getElementById('screen-home').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('goal-hud').classList.remove('hidden');
+            initGame();
+        };
+        document.getElementById('btn-next-level').onclick = () => {
+            level++; collected = 0; target = Math.floor(target * 1.3);
+            timeLeft = Math.min(60, timeLeft + 25);
+            gameState = 'PLAYING';
+            document.getElementById('screen-levelclear').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('goal-hud').classList.remove('hidden');
+            debris.forEach(d => d.init());
+        };
+        document.getElementById('btn-restart').onclick = () => {
+            gameState = 'HOME';
+            document.getElementById('screen-gameover').classList.add('hidden');
+            document.getElementById('screen-home').classList.remove('hidden');
+            updateRank();
+        };
+
+        // 交互逻辑
+        canvas.onmousedown = (e) => { 
+            if(gameState === 'PLAYING' && !isFrenzy) {
+                isPressing = true; pressX = e.clientX; pressY = e.clientY;
+                spawnHarpoons(pressX, pressY);
+            }
+        };
+        window.onmousemove = (e) => { pressX = e.clientX; pressY = e.clientY; };
+        window.onmouseup = () => { isPressing = false; };
+
+        canvas.ontouchstart = (e) => { 
+            e.preventDefault(); 
+            if(gameState === 'PLAYING' && !isFrenzy) {
+                isPressing = true; pressX = e.touches[0].clientX; pressY = e.touches[0].clientY;
+                spawnHarpoons(pressX, pressY);
+            }
+        };
+        canvas.ontouchmove = (e) => { e.preventDefault(); pressX = e.touches[0].clientX; pressY = e.touches[0].clientY; };
+        canvas.ontouchend = () => { isPressing = false; };
+
+        window.onresize = resize;
+        resize(); updateRank(); requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
